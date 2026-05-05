@@ -33,7 +33,7 @@ Place this at the project root and edit to match your service:
 ```yaml
 meta:
   service: my-app
-  contact: ops@example.com
+  contact: your-mail@example.com
 
 services:
   name: my-app
