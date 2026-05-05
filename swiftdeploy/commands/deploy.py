@@ -21,13 +21,13 @@ def cmd_deploy(manifest_path: str, timeout: int):
     if r.returncode != 0:
         die(r.stderr.strip())
     ok("stack started")
-
     manifest = load_manifest(manifest_path)
     port = int(require(manifest, "nginx", "port"))
     health = get(manifest, "services", "health_path") or "/healthz"
     url = f"http://localhost:{port}{health}"
 
     info(f"waiting for {url} (timeout: {timeout}s)")
+    time.sleep(5)
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
