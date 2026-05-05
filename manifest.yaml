@@ -1,0 +1,12 @@
+services:
+  name: backend
+  image: swift-deploy-1-node:latest
+  port: 8080
+  env:
+    MODE: canary
+nginx:
+  image: nginx:latest
+  port: 8443
+network:
+  name: swiftdeploy-net
+  driver_type: bridge
