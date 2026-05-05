@@ -1,0 +1,41 @@
+services:
+  {{ services.name }}:
+    image: {{ services.image }}
+    expose:
+      - "{{ services.port }}"
+    networks:
+      - {{ network.name }}
+    environment:
+      {% for k, v in services.env.items() %}
+      - {{ k }}={{ v }}
+      {% endfor %}
+    restart: {{ services.restart }}
+    {% if volumes %}
+    volumes:
+      {% for vol in volumes %}
+      - {{ vol.name }}:{{ vol.mount_path }}
+      {% endfor %}
+    {% endif %}
+
+  nginx:
+    image: {{ nginx.image }}
+    ports:
+      - "{{ nginx.port }}:{{ nginx.port }}"
+    networks:
+      - {{ network.name }}
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - {{ services.name }}
+    restart: {{ nginx.restart }}
+
+networks:
+  {{ network.name }}:
+    driver: {{ network.driver }}
+
+{% if volumes %}
+volumes:
+  {% for vol in volumes %}
+  {{ vol.name }}:
+  {% endfor %}
+{% endif %}
