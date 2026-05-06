@@ -13,6 +13,10 @@ def err(msg):
     print(f"  \033[31m✘\033[0m {msg}", file=sys.stderr)
 
 
+def warn(msg):
+    print(f"  \033[33m⚠\033[0m {msg}")
+
+
 def info(msg):
     print(f"  \033[36m→\033[0m {msg}")
 
