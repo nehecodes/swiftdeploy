@@ -29,9 +29,35 @@ services:
       - {{ services.name }}
     restart: {{ nginx.restart }}
 
+  opa:
+    image: {{ opa.image }}
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level={{ opa.log_level }}"
+      - "--log-format=json"
+      - "/policies"
+    ports:
+      - "127.0.0.1:{{ opa.port }}:8181"
+    volumes:
+      - ./policies:/policies:ro
+    networks:
+      - policy_internal
+    restart: {{ opa.restart }}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
 networks:
   {{ network.name }}:
     driver: {{ network.driver }}
+  policy_internal:
+    driver: bridge
+    internal: true
 
 {% if volumes %}
 volumes:
