@@ -8,10 +8,112 @@ import (
 	"os"
 	"sync"
 	"time"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var version = "1.0.0"
 var startTime = time.Now()
+
+var (
+	httpRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "path", "status_code"},
+	)
+
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request latency",
+			Buckets: prometheus.DefBuckets, // standard buckets
+		},
+		[]string{"method", "path"},
+	)
+
+	appUptime = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "app_uptime_seconds",
+			Help: "Application uptime in seconds",
+		},
+		func() float64 {
+			return time.Since(startTime).Seconds()
+		},
+	)
+
+	appMode = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "app_mode",
+			Help: "Application mode (0=stable, 1=canary)",
+		},
+		func() float64 {
+			if isCanary() {
+				return 1
+			}
+			return 0
+		},
+	)
+
+	chaosActive = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "chaos_active",
+			Help: "Chaos state (0=none, 1=slow, 2=error)",
+		},
+		func() float64 {
+			chaos.mu.RLock()
+			defer chaos.mu.RUnlock()
+			switch chaos.mode {
+			case "slow":
+				return 1
+			case "error":
+				return 2
+			default:
+				return 0
+			}
+		},
+	)
+)
+
+
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *responseRecorder) WriteHeader(code int) {
+	r.statusCode = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		rec := &responseRecorder{
+			ResponseWriter: w,
+			statusCode:     200,
+		}
+
+		next.ServeHTTP(rec, r)
+
+		duration := time.Since(start).Seconds()
+
+		path := r.URL.Path
+
+		httpRequestsTotal.WithLabelValues(
+			r.Method,
+			path,
+			http.StatusText(rec.statusCode),
+		).Inc()
+
+		httpRequestDuration.WithLabelValues(
+			r.Method,
+			path,
+		).Observe(duration)
+	})
+}
 
 type chaosState struct {
 	mu			sync.RWMutex
@@ -170,13 +272,22 @@ func main() {
 	mux.HandleFunc("/", rootHandler)
 	mux.HandleFunc("/healthz", healthzHandler)
 	mux.HandleFunc("/chaos", chaosHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
+	prometheus.MustRegister(
+	httpRequestsTotal,
+	httpRequestDuration,
+	appUptime,
+	appMode,
+	chaosActive,
+)
+	handler := corsMiddleware(metricsMiddleware(mux))
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	log.Printf("starting API service mode=%s version=%s port=%s", getMode(), version, port)
-	if err := http.ListenAndServe(":"+port, corsMiddleware(mux)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 
