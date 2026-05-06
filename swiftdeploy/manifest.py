@@ -45,7 +45,11 @@ def save_manifest(path: str, data: dict):
 
 
 def render(manifest: dict, mode: str):
+    """Render nginx.conf and docker-compose.yaml from Jinja2 templates.
 
+    The OPA context block exposes all OPA-related variables to the template.
+    Thresholds and tunables default here; operators override via manifest.yaml.
+    """
     env = Environment(
         loader=FileSystemLoader(TEMPLATES),
         trim_blocks=True,
@@ -69,7 +73,7 @@ def render(manifest: dict, mode: str):
         },
         nginx={
             "image": get(manifest, "nginx", "image") or "nginx:latest",
-            "port": int(require(manifest, "nginx", "port")) or 80,
+            "port": int(require(manifest, "nginx", "port")),
             "server_name": get(manifest, "nginx", "server_name") or "localhost",
             "restart": get(manifest, "nginx", "restart") or "unless-stopped",
             "proxy_timeout": get(manifest, "nginx", "proxy_timeout") or "30s",
@@ -80,18 +84,31 @@ def render(manifest: dict, mode: str):
             "log_format": get(manifest, "nginx", "log_format"),
             "volumes": get(manifest, "services", "volumes") or [],
         },
+        # ── OPA sidecar configuration ────────────────────────────────────────
+        # All values are safe defaults; operators may override via manifest.yaml
+        # under the `opa:` key.  The CLI reads `opa.url` for direct queries.
+        opa={
+            "image": get(manifest, "opa", "image") or "openpolicyagent/opa:latest",
+            "port": int(get(manifest, "opa", "port") or 8181),
+            "log_level": get(manifest, "opa", "log_level") or "error",
+            "restart": get(manifest, "opa", "restart") or "unless-stopped",
+            # URL the CLI uses to reach OPA (host-bound loopback port)
+            "url": get(manifest, "opa", "url") or "http://localhost:8181",
+        },
         network={
             "name": require(manifest, "network", "name"),
             "driver": require(manifest, "network", "driver_type"),
         },
         volumes=get(manifest, "volumes") or [],
         meta={
-            "service": get(manifest, "meta", "service")
-            or get(manifest, "services", "name"),
+            "service": (
+                get(manifest, "meta", "service") or get(manifest, "services", "name")
+            ),
             "contact": get(manifest, "meta", "contact") or "nehemiah.dev",
         },
         mode=mode,
     )
+
     with open(NGINX_CONF, "w") as f:
         f.write(env.get_template("nginx.conf.j2").render(**ctx))
 
