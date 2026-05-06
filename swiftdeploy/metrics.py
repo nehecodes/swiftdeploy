@@ -42,7 +42,18 @@ class Snapshot:
 
     @property
     def error_requests(self) -> float:
-        return sum(v for k, v in self.requests_total.items() if k.startswith("5"))
+        _5xx_texts = {
+            "Internal Server Error",
+            "Not Implemented",
+            "Bad Gateway",
+            "Service Unavailable",
+            "Gateway Timeout",
+        }
+        return sum(
+            v
+            for k, v in self.requests_total.items()
+            if k.startswith("5") or k in _5xx_texts
+        )
 
 
 @dataclass
@@ -75,7 +86,8 @@ class MetricsScraper:
 
     # Patterns for the metric families we care about
     _RE_REQUESTS = re.compile(
-        r'^http_requests_total\{.*?status="(\d+)".*?\}\s+([\d.e+]+)', re.MULTILINE
+        r'^http_requests_total\{.*?(?:status|status_code)="([^"]+)".*?\}\s+([\d.e+]+)',
+        re.MULTILINE,
     )
     _RE_BUCKET = re.compile(
         r'^http_request_duration_seconds_bucket\{.*?le="([^"]+)".*?\}\s+([\d.e+]+)',
